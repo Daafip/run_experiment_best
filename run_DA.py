@@ -198,7 +198,7 @@ class Experiment(BaseModel):
         camels_forcing = sources.HBVForcing(start_time=self.experiment_start_date,
                                             end_time=self.experiment_end_date,
                                             directory=forcing_path,
-                                            camels_file=f'0{self.HRU_id}_lump_cida_forcing_leap.txt',
+                                            camels_file=f'{self.HRU_id}_lump_cida_forcing_leap.txt',
                                             alpha=self.alpha,
                                             )
 
@@ -938,7 +938,7 @@ def main_experiment_iteration():
                 print(
                     f'starting sig-{sigma_p_Sf} with sig_w-{sigma_w} at {current_time}',
                     end="\n")
-                ending = ","
+                ending = "\n"
                 experiment.set_up_forcing()
 
                 print(f'init ', end=ending)
