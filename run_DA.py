@@ -1,4 +1,5 @@
 import warnings
+
 warnings.filterwarnings("ignore", category=UserWarning)
 import numpy as np
 from pathlib import Path
@@ -11,12 +12,25 @@ import shutil
 from typing import Any
 from ewatercycle.forcing import sources
 from ewatercycle_DA import DA
+import ewatercycle.models
+from ewatercycle.models import HBVLocal
 from pydantic import BaseModel
-
 
 param_names = ["Imax", "Ce", "Sumax", "Beta", "Pmax", "Tlag", "Kf", "Ks", "FM"]
 stor_names = ["Si", "Su", "Sf", "Ss", "Sp"]
+rng = np.random.default_rng()  # Initiate a Random Number Generator
 
+
+def add_normal_noise(like_sigma) -> float:
+    """Normal (zero-mean) noise to be added to a state
+
+    Args:
+        like_sigma (float): scale parameter - pseudo variance & thus 'like'-sigma
+
+    Returns:
+        sample from normal distribution
+    """
+    return rng.normal(loc=0, scale=like_sigma)  # log normal so can't go to 0 ?
 
 
 class Experiment(BaseModel):
@@ -46,7 +60,6 @@ class Experiment(BaseModel):
     ds_obs_dir: Path | None = None
     state_vector_arr: Any = None
 
-
     @staticmethod
     def H(Z):
         """Operator function extracts observable state from the state vector"""
@@ -54,20 +67,21 @@ class Experiment(BaseModel):
         if len(Z) == len_Z:
             return Z[-1]
         else:
-            raise SyntaxWarning(f"Length of statevector should be {len_Z} but is {len(Z)}")
+            raise SyntaxWarning(
+                f"Length of statevector should be {len_Z} but is {len(Z)}")
 
     @staticmethod
     def calc_NSE(Qo, Qm):
-        QoAv  = np.mean(Qo)
-        ErrUp = np.sum((Qm - Qo)**2)
-        ErrDo = np.sum((Qo - QoAv)**2)
+        QoAv = np.mean(Qo)
+        ErrUp = np.sum((Qm - Qo) ** 2)
+        ErrDo = np.sum((Qo - QoAv) ** 2)
         return 1 - (ErrUp / ErrDo)
 
     @staticmethod
     def calc_log_NSE(Qo, Qm):
-        QoAv  = np.mean(Qo)
-        ErrUp = np.sum((np.log(Qm) - np.log(Qo))**2)
-        ErrDo = np.sum((np.log(Qo) - np.log(QoAv))**2)
+        QoAv = np.mean(Qo)
+        ErrUp = np.sum((np.log(Qm) - np.log(Qo)) ** 2)
+        ErrDo = np.sum((np.log(Qo) - np.log(QoAv)) ** 2)
         return 1 - (ErrUp / ErrDo)
 
     def set_up_forcing(self):
@@ -104,7 +118,6 @@ class Experiment(BaseModel):
         for path_i in list(self.paths):
             path_i.mkdir(exist_ok=True)
 
-
     def initialize(self):
         """Contains actual code to run the experiment"""
 
@@ -115,33 +128,35 @@ class Experiment(BaseModel):
         self.ensemble.setup()
 
         # initial values
-        array_random_num = np.array([[np.random.random() for _ in range(len(p_max_initial))] for _ in range(self.n_particles)])
-        p_initial = p_min_initial + array_random_num * (p_max_initial-p_min_initial)
+        array_random_num = np.array(
+            [[np.random.random() for _ in range(len(p_max_initial))] for _ in
+             range(self.n_particles)])
+        p_initial = p_min_initial + array_random_num * (p_max_initial - p_min_initial)
 
         # values which you
         setup_kwargs_lst = []
         for index in range(self.n_particles):
-            setup_kwargs_lst.append({'parameters':','.join([str(p) for p in p_initial[index]]),
-                                    'initial_storage':','.join([str(s) for s in self.s_0]),
-                                     })
+            setup_kwargs_lst.append(
+                {'parameters': ','.join([str(p) for p in p_initial[index]]),
+                 'initial_storage': ','.join([str(s) for s in self.s_0]),
+                 })
 
         # this initializes the models for all ensemble members.
-        self.ensemble.initialize(model_name=[self.model_name]*self.n_particles,
-                            forcing=self.lst_camels_forcing,
-                            setup_kwargs=setup_kwargs_lst)
+        self.ensemble.initialize(model_name=[self.model_name] * self.n_particles,
+                                 forcing=self.lst_camels_forcing,
+                                 setup_kwargs=setup_kwargs_lst)
 
         del setup_kwargs_lst, p_initial, array_random_num
         gc.collect()
 
+        self.ref_model = self.ensemble.ensemble_list[0].model
+        
     def load_obs(self):
         forcing_path, output_path, observations_path = self.paths
-        # create a reference model
-        self.ref_model = self.ensemble.ensemble_list[0].model
-
+    
         # load observations
         self.ds_obs_dir = observations_path / f'{self.HRU_id}_streamflow_qc.nc'
         if not self.ds_obs_dir.exists():
-
             ds = xr.open_dataset(forcing_path / self.ref_model.forcing.pr)
             basin_area = ds.attrs['area basin(m^2)']
             ds.close()
@@ -149,16 +164,26 @@ class Experiment(BaseModel):
             observations = observations_path / f'{self.HRU_id}_streamflow_qc.txt'
             cubic_ft_to_cubic_m = 0.0283168466
 
-            new_header = ['GAGEID','Year','Month', 'Day', 'Streamflow(cubic feet per second)','QC_flag']
-            new_header_dict = dict(list(zip(range(len(new_header)),new_header)))
-            df_Q = pd.read_fwf(observations,delimiter=' ',encoding='utf-8',header=None)
+            new_header = ['GAGEID', 'Year', 'Month', 'Day',
+                          'Streamflow(cubic feet per second)', 'QC_flag']
+            new_header_dict = dict(list(zip(range(len(new_header)), new_header)))
+            df_Q = pd.read_fwf(observations, delimiter=' ', encoding='utf-8',
+                               header=None)
             df_Q = df_Q.rename(columns=new_header_dict)
-            df_Q['Streamflow(cubic feet per second)'] = df_Q['Streamflow(cubic feet per second)'].apply(lambda x: np.nan if x==-999.00 else x)
-            df_Q['Q (m3/s)'] = df_Q['Streamflow(cubic feet per second)'] * cubic_ft_to_cubic_m
-            df_Q['Q'] = df_Q['Q (m3/s)'] / basin_area * 3600 * 24 * 1000 # m3/s -> m/s ->m/d -> mm/d
-            df_Q.index = df_Q.apply(lambda x: pd.Timestamp(f'{int(x.Year)}-{int(x.Month)}-{int(x.Day)}'),axis=1)
+            df_Q['Streamflow(cubic feet per second)'] = df_Q[
+                'Streamflow(cubic feet per second)'].apply(
+                lambda x: np.nan if x == -999.00 else x)
+            df_Q['Q (m3/s)'] = df_Q[
+                                   'Streamflow(cubic feet per second)'] * cubic_ft_to_cubic_m
+            df_Q['Q'] = df_Q[
+                            'Q (m3/s)'] / basin_area * 3600 * 24 * 1000  # m3/s -> m/s ->m/d -> mm/d
+            df_Q.index = df_Q.apply(
+                lambda x: pd.Timestamp(f'{int(x.Year)}-{int(x.Month)}-{int(x.Day)}'),
+                axis=1)
             df_Q.index.name = "time"
-            df_Q.drop(columns=['Year','Month', 'Day','Streamflow(cubic feet per second)'],inplace=True)
+            df_Q.drop(
+                columns=['Year', 'Month', 'Day', 'Streamflow(cubic feet per second)'],
+                inplace=True)
             df_Q = df_Q.dropna(axis=0)
 
             ds_obs = xr.Dataset(data_vars=df_Q[['Q']])
@@ -167,36 +192,79 @@ class Experiment(BaseModel):
             del df_Q, ds, ds_obs
             gc.collect()
 
+    def generate_truth_run(self):        
+        forcing_path, output_path, observations_path = self.paths
+
+        camels_forcing = sources.HBVForcing(start_time=self.experiment_start_date,
+                                            end_time=self.experiment_end_date,
+                                            directory=forcing_path,
+                                            camels_file=f'0{self.HRU_id}_lump_cida_forcing_leap.txt',
+                                            alpha=self.alpha,
+                                            )
+
+        truth_model = HBVLocal(forcing=camels_forcing)
+
+        truth_parameters = np.array([3.2, 0.9, 700, 1.2, .16, 4, .08, .0075, 0.5])
+        truth_initial_storage = np.array([20, 10, 50, 100, 10])
+
+        config_file, _ = truth_model.setup(
+            parameters=','.join([str(p) for p in truth_parameters]),
+            initial_storage=','.join([str(s) for s in truth_initial_storage]),
+        )
+
+        truth_model.initialize(config_file)
+
+        Q_m = []
+        time = []
+        while truth_model.time < truth_model.end_time:
+            truth_model.update()
+            Q_m.append(truth_model.get_value("Q"))
+            time.append(truth_model.time_as_datetime.date())
+        truth_model.finalize()
+
+        truth = pd.DataFrame(Q_m, columns=["Q_m"], index=time)
+
+        truth['Q'] = truth.apply(lambda x: x.Q_m + add_normal_noise(0.1), axis=1)
+        truth.index = truth.apply(lambda x: pd.Timestamp(x.name), axis=1)
+        truth.index.name = "time"
+        ds_obs = xr.Dataset(data_vars=truth[['Q']])
+
+        current_time = str(datetime.now())[:-10].replace(":", "_")
+        self.ds_obs_dir = observations_path / f'truth_model_HBV_{current_time}.nc'
+        if not self.ds_obs_dir.is_file():
+            ds_obs.to_netcdf(self.ds_obs_dir)
+
     def initialize_da_method(self):
         # set up hyperparameters
-        sigma_pp , sigma_ps, sigma_w, sigma_p_Sf = self.sigma_tuple
+        sigma_pp, sigma_ps, sigma_w, sigma_p_Sf = self.sigma_tuple
         p_min_initial, p_max_initial, s_max_initial, s_min_initial = self.storage_parameter_bounds
         # "Imax", "Ce", "Sumax", "Beta", "Pmax", "Tlag", "Kf", "Ks", "FM" "Si", "Su", "Sf", "Ss", "Sp + Q
         # p_mean = (p_max_initial + p_min_initial) / 2
         p_sig = np.sqrt((p_max_initial - p_min_initial) ** 2 / 12)
         s_sig = np.sqrt((s_max_initial - s_min_initial) ** 2 / 12)
 
-        lst_like_sigma = (list(sigma_p_Sf * p_sig) + # parameters
-                          list(sigma_p_Sf * s_sig) + # states
-                          [0]) # Q
-        hyper_parameters = {'like_sigma_weights' : sigma_w,
-                            'like_sigma_state_vector' : lst_like_sigma,
-                           }
-        print(f'init_da',end=" ")
+        lst_like_sigma = (list(sigma_p_Sf * p_sig) +  # parameters
+                          list(sigma_p_Sf * s_sig) +  # states
+                          [0])  # Q
+        hyper_parameters = {'like_sigma_weights': sigma_w,
+                            'like_sigma_state_vector': lst_like_sigma,
+                            }
+        print(f'init_da', end=" ")
 
-        self.ensemble.initialize_da_method(ensemble_method_name = "PF",
-                                      hyper_parameters=hyper_parameters,
-                                      state_vector_variables = "all", # the next three are keyword arguments but are needed.
-                                      observation_path = self.ds_obs_dir,
-                                      observed_variable_name = "Q",
-                                      measurement_operator = self.H,
+        self.ensemble.initialize_da_method(ensemble_method_name="PF",
+                                           hyper_parameters=hyper_parameters,
+                                           state_vector_variables="all",
+                                           # the next three are keyword arguments but are needed.
+                                           observation_path=self.ds_obs_dir,
+                                           observed_variable_name="Q",
+                                           measurement_operator=self.H,
 
-                                    )
+                                           )
         # extract units for later
         state_vector_variables = self.ensemble.ensemble_list[0].variable_names
 
         for var in state_vector_variables:
-            self.units.update({var : self.ref_model.bmi.get_var_units(var)})
+            self.units.update({var: self.ref_model.bmi.get_var_units(var)})
 
     def assimilate(self):
         ## run!
@@ -231,7 +299,7 @@ class Experiment(BaseModel):
 
                 else:
                     self.lst_n_resample_indexes.append(np.nan)
-        except KeyboardInterrupt: # saves deleting N folders if quit manually
+        except KeyboardInterrupt:  # saves deleting N folders if quit manually
             self.ensemble.finalize()
 
         self.ensemble.finalize()
@@ -246,7 +314,7 @@ class Experiment(BaseModel):
             storage_terms_i = xr.DataArray(self.state_vector_arr[:, :, i].T,
                                            name=name,
                                            dims=["summary_stat", "time"],
-                                           coords=[['min','max','mean'],
+                                           coords=[['min', 'max', 'mean'],
                                                    self.time],
                                            attrs={
                                                "title": f"HBV storage terms data over time for {self.n_particles} particles ",
@@ -267,16 +335,16 @@ class Experiment(BaseModel):
                                      "assimilate_window": self.assimilate_window,
                                      "n_particles": self.n_particles,
                                      "HRU_id": self.HRU_id,
-                                      }
+                                 }
                                  )
 
         ds_obs = xr.open_dataset(self.ds_obs_dir)
-        ds_observations = ds_obs['Q'].sel(time=self.time)
+        ds_observations = ds_obs['Q'] #.sel(time=self.time)
         ds_obs.close()
         ds_combined['Q_obs'] = ds_observations
         ds_combined['Q_obs'].attrs.update({
             'history': 'USGS streamflow data obtained from CAMELS dataset',
-            'url':'https://dx.doi.org/10.5065/D6MW2F4D'})
+            'url': 'https://dx.doi.org/10.5065/D6MW2F4D'})
 
         df_n_eff = pd.DataFrame(index=self.time,
                                 data=self.lst_N_eff,
@@ -287,13 +355,12 @@ class Experiment(BaseModel):
             'info': 'DA debug: 1/sum(weights^2): measure for effective ensemble size'})
 
         df_n_resample = pd.DataFrame(index=self.time,
-                                data=self.lst_n_resample_indexes,
-                                columns=['n_resample'])
+                                     data=self.lst_n_resample_indexes,
+                                     columns=['n_resample'])
         df_n_resample.index.name = 'time'
         ds_combined['n_resample'] = df_n_resample['n_resample']
         ds_combined['n_resample'].attrs.update({
             'info': 'DA debug: number of uniquely resampled particles'})
-
 
         current_time = str(datetime.now())[:-10].replace(":", "_")
         sigma_pp, sigma_ps, sigma_w, sigma_p_Sf = self.sigma_tuple
@@ -308,10 +375,9 @@ class Experiment(BaseModel):
         ds_combined.close()
 
         del (self.time, ds_obs, self.lst_n_resample_indexes,
-            self.lst_N_eff, df_n_eff, df_n_resample, ds_combined)
+             self.lst_N_eff, df_n_eff, df_n_resample, ds_combined)
 
         gc.collect()
-
 
     def finalize(self):
         forcing_path = self.paths[0]
@@ -320,7 +386,14 @@ class Experiment(BaseModel):
             forcing_file = forcing_path / forcing.pr
             forcing_file.unlink(missing_ok=True)
 
-    
+        # catch to remove forcing objects if not already.
+        try:
+            self.ensemble.finalize()
+            del self.ensemble.finalize
+        except AttributeError:
+            pass # already deleted previously
+
+
 
 """
 Check list for a new experiment:
@@ -333,13 +406,15 @@ Check list for a new experiment:
     - Meaningful file path
 
 """
+
+
 def main_experiment_iteration():
     # """Contains iterables for experiment"""
     experiment_start_date = "1997-08-01T00:00:00Z"
     experiment_end_date = "2002-09-01T00:00:00Z"
     assimilate_window = 3  # after how many time steps to run the assimilate steps
-    sigma_pp = 0
-    sigma_ps = 0
+    sigma_pp = 0.005
+    sigma_ps = 0.005
 
     model_name = "HBVLocal"
 
@@ -357,13 +432,13 @@ def main_experiment_iteration():
                                 s_max_initial,
                                 s_min_initial)
     alpha = 1.26
-
+    print_ending = "\n" # should be \n to show in promt, can be removed here by changing to ' '
     # sigma_w_lst = [0.45, 0.5, 0.6, 0.75, 0.8, 1, 1.25, 2, 3, 5, 10]
-    sigma_w_lst = [2, 3, 5, 10]
+    sigma_w_lst = [0.05]
     for run_number, sigma_w in enumerate(sigma_w_lst):
         n_particles = 500
-        lst_sig_p = [1e-2, 1e-3, 1e-4, 1e-5,1e-6,1e-7]
-        for index, HRU_id_int in enumerate(["01181000"]):
+        lst_sig_p = [0.005]
+        for index, HRU_id_int in enumerate(["1620500"]):
             for sigma_p_Sf in lst_sig_p:
                 HRU_id = f'{HRU_id_int}'
                 if len(HRU_id) < 8:
@@ -382,36 +457,47 @@ def main_experiment_iteration():
                                         experiment_end_date=experiment_end_date,
                                         alpha=alpha,
                                         save=save)
+                try:
+                    print(
+                        f'starting sig-{sigma_p_Sf} with sig_w-{sigma_w} at {current_time}',
+                        end="\n")
+                    experiment.set_up_forcing()
 
-                print(f'starting sig-{sigma_p_Sf} with sig_w-{sigma_w} at {current_time}',end="\n")
-                ending = "\n"
-                experiment.set_up_forcing()
+                    print(f'init ', end=print_ending)
+                    experiment.initialize()
 
-                print(f'init ',end=ending)
-                experiment.initialize()
+                    #################### Main difference in this synthetic run ############
+                    print(f'generate_truth_run ', end=print_ending)
+                    experiment.generate_truth_run()
 
-                print(f'load obs ', end=ending)
-                experiment.load_obs()
+                    print(f'init da ', end=print_ending)
+                    experiment.initialize_da_method()
 
-                print(f'init da ', end=ending)
-                experiment.initialize_da_method()
+                    print(f'assimilate ', end=print_ending)
+                    experiment.assimilate()
 
-                print(f'assimilate ', end=ending)
-                experiment.assimilate()
+                    print(f'output ', end=print_ending)
+                    experiment.create_combined_ds()
 
-                print(f'output ', end=ending)
-                experiment.create_combined_ds()
+                    print(f'cleanup ', end=print_ending)
+                    experiment.finalize()
 
-                print(f'cleanup ', end=ending)
-                experiment.finalize()
+                    del experiment
+                    gc.collect()
+
+                except Exception as e:
+                    print(e)
+
+                finally:
+                    print(f'cleanup ', end=print_print_ending)
+                    experiment.finalize()
 
                 del experiment
                 gc.collect()
 
-   
 if __name__ == "__main__":
     gc.enable()
     main_experiment_iteration()
 
 
-   
+
