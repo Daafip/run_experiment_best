@@ -421,9 +421,11 @@ def main_experiment_iteration():
     save = True
 
     s_0 = np.array([0, 100, 0, 5, 0])
+    # "Imax", "Ce", "Sumax", "Beta", "Pmax", "Tlag", "Kf", "Ks", "FM"
     p_min_initial = np.array([0, 0.2, 40, .5, .001, 1, .01, .0001, 6])
     p_max_initial = np.array([8, 1, 800, 4, .3, 10, .1, .01, 0.1])
 
+    # "Si", "Su", "Sf", "Ss", "Sp + Q
     s_max_initial = np.array([10, 250, 100, 40, 150])
     s_min_initial = np.array([0, 150, 0, 0, 0])
 
@@ -477,12 +479,6 @@ def main_experiment_iteration():
 
                     print(f'output ', end=print_ending)
                     experiment.create_combined_ds()
-
-                    print(f'cleanup ', end=print_ending)
-                    experiment.finalize()
-
-                    del experiment
-                    gc.collect()
 
                 except Exception as e:
                     print(e)
