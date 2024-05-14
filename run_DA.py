@@ -150,10 +150,10 @@ class Experiment(BaseModel):
         gc.collect()
 
         self.ref_model = self.ensemble.ensemble_list[0].model
-        
+
     def load_obs(self):
         forcing_path, output_path, observations_path = self.paths
-    
+
         # load observations
         self.ds_obs_dir = observations_path / f'{self.HRU_id}_streamflow_qc.nc'
         if not self.ds_obs_dir.exists():
@@ -192,7 +192,7 @@ class Experiment(BaseModel):
             del df_Q, ds, ds_obs
             gc.collect()
 
-    def generate_truth_run(self):        
+    def generate_truth_run(self):
         forcing_path, output_path, observations_path = self.paths
 
         camels_forcing = sources.HBVForcing(start_time=self.experiment_start_date,
@@ -466,9 +466,8 @@ def main_experiment_iteration():
                     print(f'init ', end=print_ending)
                     experiment.initialize()
 
-                    #################### Main difference in this synthetic run ############
-                    print(f'generate_truth_run ', end=print_ending)
-                    experiment.generate_truth_run()
+                    print(f'load obs ', end=print_ending)
+                    experiment.load_obs()
 
                     print(f'init da ', end=print_ending)
                     experiment.initialize_da_method()
@@ -489,7 +488,7 @@ def main_experiment_iteration():
                     print(e)
 
                 finally:
-                    print(f'cleanup ', end=print_print_ending)
+                    print(f'cleanup ', end=print_ending)
                     experiment.finalize()
 
                 del experiment
