@@ -339,7 +339,7 @@ class Experiment(BaseModel):
                                  )
 
         ds_obs = xr.open_dataset(self.ds_obs_dir)
-        ds_observations = ds_obs['Q'].sel(time=self.time)
+        ds_observations = ds_obs['Q'] #.sel(time=self.time)
         ds_obs.close()
         ds_combined['Q_obs'] = ds_observations
         ds_combined['Q_obs'].attrs.update({
@@ -386,6 +386,14 @@ class Experiment(BaseModel):
             forcing_file = forcing_path / forcing.pr
             forcing_file.unlink(missing_ok=True)
 
+        # catch to remove forcing objects if not already.
+        try:
+            self.ensemble.finalize()
+            del self.ensemble.finalize
+        except AttributeError:
+            pass # already deleted previously
+
+
 
 """
 Check list for a new experiment:
@@ -424,7 +432,7 @@ def main_experiment_iteration():
                                 s_max_initial,
                                 s_min_initial)
     alpha = 1.26
-
+    print_ending = "\n" # should be \n to show in promt, can be removed here by changing to ' '
     # sigma_w_lst = [0.45, 0.5, 0.6, 0.75, 0.8, 1, 1.25, 2, 3, 5, 10]
     sigma_w_lst = [0.05]
     for run_number, sigma_w in enumerate(sigma_w_lst):
@@ -449,35 +457,43 @@ def main_experiment_iteration():
                                         experiment_end_date=experiment_end_date,
                                         alpha=alpha,
                                         save=save)
+                try:
+                    print(
+                        f'starting sig-{sigma_p_Sf} with sig_w-{sigma_w} at {current_time}',
+                        end="\n")
+                    experiment.set_up_forcing()
 
-                print(
-                    f'starting sig-{sigma_p_Sf} with sig_w-{sigma_w} at {current_time}',
-                    end="\n")
-                ending = ","
-                experiment.set_up_forcing()
+                    print(f'init ', end=print_ending)
+                    experiment.initialize()
 
-                print(f'init ', end=ending)
-                experiment.initialize()
+                    #################### Main difference in this synthetic run ############
+                    print(f'generate_truth_run ', end=print_ending)
+                    experiment.generate_truth_run()
 
-                #################### Main difference in this synthetic run ############
-                print(f'generate_truth_run ', end=ending)
-                experiment.generate_truth_run()
+                    print(f'init da ', end=print_ending)
+                    experiment.initialize_da_method()
 
-                print(f'init da ', end=ending)
-                experiment.initialize_da_method()
+                    print(f'assimilate ', end=print_ending)
+                    experiment.assimilate()
 
-                print(f'assimilate ', end=ending)
-                experiment.assimilate()
+                    print(f'output ', end=print_ending)
+                    experiment.create_combined_ds()
 
-                print(f'output ', end=ending)
-                experiment.create_combined_ds()
+                    print(f'cleanup ', end=print_ending)
+                    experiment.finalize()
 
-                print(f'cleanup ', end=ending)
-                experiment.finalize()
+                    del experiment
+                    gc.collect()
+
+                except Exception as e:
+                    print(e)
+
+                finally:
+                    print(f'cleanup ', end=print_print_ending)
+                    experiment.finalize()
 
                 del experiment
                 gc.collect()
-
 
 if __name__ == "__main__":
     gc.enable()
