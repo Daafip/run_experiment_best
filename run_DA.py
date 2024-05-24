@@ -436,11 +436,11 @@ def main_experiment_iteration():
     alpha = 1.26
     print_ending = "\n" # should be \n to show in promt, can be removed here by changing to ' '
     # sigma_w_lst = [0.45, 0.5, 0.6, 0.75, 0.8, 1, 1.25, 2, 3, 5, 10]
-    sigma_w_lst = [0.05]
+    sigma_w_lst = [3.1, 3.3, 3.5, 3.7, 3.9]
     for run_number, sigma_w in enumerate(sigma_w_lst):
-        n_particles = 500
-        lst_sig_p = [0.005]
-        for index, HRU_id_int in enumerate(["1620500"]):
+        n_particles = 500        
+        lst_sig_p = [5e-3, 1e-4, 5e-4]
+        for index, HRU_id_int in enumerate(["1181000"]):
             for sigma_p_Sf in lst_sig_p:
                 HRU_id = f'{HRU_id_int}'
                 if len(HRU_id) < 8:
