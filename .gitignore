@@ -1,0 +1,4 @@
+hbvlocal*/*
+Forcing/HBV_forcing*
+Observations/*.nc
+Output/larger/*.nc

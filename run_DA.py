@@ -215,14 +215,25 @@ class Experiment(BaseModel):
                 else:
                     assimilate = False
 
+                # obs = self.ensemble.ensemble_method.obs
+                current_time = np.datetime64(self.ensemble.ensemble_list[0].model.time_as_datetime)
+                obs = self.ensemble.observations.sel(time=current_time, method="nearest").values
+
                 self.ensemble.update(assimilate=assimilate)
 
                 state_vector = self.ensemble.get_state_vector()
                 sv_min = state_vector.T.min(axis=1)
                 sv_max = state_vector.T.max(axis=1)
                 sv_mean = state_vector.T.mean(axis=1)
-                summarised_state_vector = np.array([sv_min, sv_max, sv_mean])
+
+                state_q = state_vector[:,-1]
+                diff = abs(obs - state_q)
+                index_best_fit = diff.argmin()
+                sv_best_fit = state_vector[index_best_fit,:]
+
+                summarised_state_vector = np.array([sv_min, sv_max, sv_mean, sv_best_fit])
                 lst_state_vector.append(summarised_state_vector)
+
                 del state_vector, sv_min, sv_max, sv_mean, summarised_state_vector
                 gc.collect()
 
@@ -248,7 +259,7 @@ class Experiment(BaseModel):
             storage_terms_i = xr.DataArray(self.state_vector_arr[:, :, i].T,
                                            name=name,
                                            dims=["summary_stat", "time"],
-                                           coords=[['min', 'max', 'mean'],
+                                           coords=[['min', 'max', 'mean','best'],
                                                    self.time],
                                            attrs={
                                                "title": f"HBV storage terms data over time for {self.n_particles} particles ",
@@ -411,7 +422,6 @@ def run_experiment(HRU_id_int: Any,
             del ds_combined
             gc.collect()
 
-
     except Exception as e:
         print(e)
 
@@ -420,6 +430,7 @@ def run_experiment(HRU_id_int: Any,
         experiment.finalize()
 
     del experiment
+
     gc.collect()
 
     return returned
@@ -442,22 +453,22 @@ Check list for a new experiment:
 def main():
     """Main script"""
     forcing_path = Path.cwd() / "Forcing"
-    HRU_ids = [path.name[1:8] for path in
+    HRU_ids = [path.name[0:8] for path in
                forcing_path.glob("*_lump_cida_forcing_leap.txt")]
-
+    n_start_skip = 0
+    n_end_skip = 0
     sigma_w = 2
     sigma_p_Sf = 1e-3 # in the report this is epsilon_p
 
-    # total_nruns = len(HRU_ids) * len(sigma_w_lst) * len(sigma_p_Sf_lst)
-    total_nruns = len(HRU_ids)
+    total_nruns = len(HRU_ids) - n_start_skip - n_end_skip 
     avg_run_length = 0.3  # hr
     total_hrs = total_nruns * avg_run_length
     estimated_finish = datetime.now() + timedelta(hours=total_hrs)
     print(
         f'based on {total_nruns}run @ {avg_run_length}hrs/run = est.finish: {estimated_finish.strftime("%Y-%m-%d %H:%M")}')
 
-    for index, HRU_id_int in enumerate(HRU_ids[::-1]): # start at the end
-        if index > 5000:
+    for index, HRU_id_int in enumerate(HRU_ids):
+        if index < n_start_skip or index > (len(HRU_ids)-n_end_skip):
             pass
         else:
             # initial guess
@@ -522,6 +533,7 @@ def main():
 
             except Exception as e:
                 print(e)
+
 
 
 if __name__ == "__main__":
