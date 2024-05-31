@@ -1,0 +1,7 @@
+{
+    "precipitation_file": "/media/davidhaasnoot/files/work/Studie TUD/Msc/Year 6/Q3 Thesis/Code/run_experiment_best/Forcing/HBV_forcing_CAMELS_2024-05-31 17_39_tXUOx.nc",
+    "potential_evaporation_file": "/media/davidhaasnoot/files/work/Studie TUD/Msc/Year 6/Q3 Thesis/Code/run_experiment_best/Forcing/HBV_forcing_CAMELS_2024-05-31 17_39_tXUOx.nc",
+    "mean_temperature_file": "/media/davidhaasnoot/files/work/Studie TUD/Msc/Year 6/Q3 Thesis/Code/run_experiment_best/Forcing/HBV_forcing_CAMELS_2024-05-31 17_39_tXUOx.nc",
+    "parameters": "2.8828028647701283,0.3459657404839104,478.0231156645215,2.9633422152773066,0.12987534382277643,6.005735556131608,0.034501792567951904,0.005435637390921803,1.9587660554112496",
+    "initial_storage": "0,100,0,5,0"
+}

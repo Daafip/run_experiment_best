@@ -455,7 +455,7 @@ def main():
     forcing_path = Path.cwd() / "Forcing"
     HRU_ids = [path.name[0:8] for path in
                forcing_path.glob("*_lump_cida_forcing_leap.txt")]
-    n_start_skip = 6
+    n_start_skip = 196
     n_end_skip = 0
     sigma_w = 2
     sigma_p_Sf = 1e-3 # in the report this is epsilon_p
