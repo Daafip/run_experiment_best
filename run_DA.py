@@ -453,9 +453,22 @@ Check list for a new experiment:
 def main():
     """Main script"""
     forcing_path = Path.cwd() / "Forcing"
-    HRU_ids = [path.name[0:8] for path in
-               forcing_path.glob("*_lump_cida_forcing_leap.txt")]
-    n_start_skip = 196
+    #HRU_ids = [path.name[0:8] for path in
+    #           forcing_path.glob("*_lump_cida_forcing_leap.txt")]
+    HRU_ids = [6224000,
+ 4115265,
+ 1365000,
+ 4221000,
+ 7197000,
+ 6468170,
+ 7167500,
+ 7071500,
+ 7149000,
+ 5458000,
+ 7195800]
+
+
+    n_start_skip = 0
     n_end_skip = 0
     sigma_w = 2
     sigma_p_Sf = 1e-3 # in the report this is epsilon_p
